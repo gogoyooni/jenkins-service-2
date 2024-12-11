@@ -1,44 +1,9 @@
 pipeline {
     agent {
         kubernetes {
-            cloud 'kubernetes'
-            label 'kubeagent'  // Jenkins UI에서 설정한 label과 일치
-            namespace 'devops-tools'  // Jenkins agent가 실행될 네임스페이스
-            serviceAccount 'jenkins-admin'  // 우리가 설정한 ServiceAccount
-            yaml '''
-                apiVersion: v1
-                kind: Pod
-                metadata:
-                  namespace: devops-tools
-                  labels:
-                    jenkins: agent
-                    component: kubeagent
-                spec:
-                  serviceAccountName: jenkins-admin
-                  containers:
-                  - name: kaniko
-                    image: gcr.io/kaniko-project/executor:debug
-                    command:
-                    - /busybox/cat
-                    tty: true
-                    volumeMounts:
-                    - name: docker-config
-                      mountPath: /kaniko/.docker/
-                  - name: kubectl
-                    image: bitnami/kubectl:latest
-                    command:
-                    - sleep
-                    args:
-                    - 99d
-                    tty: true
-                  volumes:
-                  - name: docker-config
-                    secret:
-                      secretName: docker-credentials
-                      items:
-                        - key: .dockerconfigjson
-                          path: config.json
-            '''
+            yaml """
+${POD_TEMPLATE}
+"""
         }
     }
    
@@ -54,7 +19,21 @@ pipeline {
     }
    
     stages {
-        // ... stages 내용은 동일 ...
+        stage('Build Docker Image') {
+            steps {
+                container('kaniko') {
+                    script {
+                        sh """
+                            /kaniko/executor \
+                                --context . \
+                                --destination ${DOCKER_IMAGE}:${DOCKER_TAG} \
+                                --destination ${DOCKER_IMAGE}:latest
+                        """
+                    }
+                }
+            }
+        }
+
         stage('Deploy to Kubernetes') {
             steps {
                 container('kubectl') {
